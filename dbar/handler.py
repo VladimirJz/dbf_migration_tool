@@ -63,130 +63,119 @@ class vfp_dbf():
         #print(table_rows)
         i=0
         data=[]
-        for row in table:
+        #for row in table:
             #print("Table: ",tablename)
            # print(row)
             #print(row.to_list())
-            data.append(row.to_list())
-            # i=i+1
-            # if i==100000:
-            #     break
+            #data.append(row.to_list())
+            #i=i+1
+            #if i==30:
+            #    break
         #print("Load data finished")
         table.close()
         return data
     
-    def data_generator(self,table,blocksize):
+    def data_generator(self,file,blocksize):
+        
         def block_generator(table):                
+            i=0
             for row in table:
+                #i=i+1
+                #if i==30:
+                #    break
                 yield row.to_list()
             pass
 
-        data_block=block_generator(table)
         data=[]
+        file_name=os.path.normpath(str(file.absolute()))
+        table=dbf.Table(filename=file_name)
+        table.open()
+        data_block=block_generator(table)
         for item in data_block:
-            print("loop over items ")
+            #print("loop over items ")
             data.append(item)
-            if(len(data)>blocksize):
-                print("Yield the list")
-                yield data
+            #print("Generator add loop:")
+            #print(data)
+            if(len(data)>=blocksize):
+                #print("Yield the list")
+                #print(data)
+                row_list=self._sanitize(data)
                 data=[]
+                #print("DEVUELTO:")
+                #print (row_list)
+                yield row_list
        
 
 
 
 
-def sanitize(self,dict_rows):
-    list_values=[]
-    for  row  in dict_rows:
-        row_values=[]
-        for key,value in row.items():
-            #print([key])
-            #print([value])
-            #print(type(value))
-            casted_value=value
+    def _sanitize(self,dict_rows):
+        row_list=[]
+        #print ("recibido:",len(dict_rows))
+        for  row  in dict_rows:
+            row_values=[]
+            #print("item:")
+            for key,value in row.items():
+                #print([key])
+                #print([value])
+                #print(type(value))
+                casted_value=value
 
-            if not value:
-                casted_value=None
+                if not value:
+                    casted_value=None
 
-            if( isinstance(value,bytes)):
-                
-                
-                try:
-                    if self._cast_patern in key:
-                        casted_value=int.from_bytes(value,"big")
+                if( isinstance(value,bytes)):
+                    
+                    
+                    try:
+                        if self._cast_patern in key:
+                            casted_value=int.from_bytes(value,"big")
+                        else:
+                            casted_value=value.decode('UTF-8') # ascii
+                    except:
+                        #char_set=chardet.detect(value)
+                        #print ("char",char_set)
+                        casted_value=value.decode('ISO-8859-1') 
+
+                if(isinstance(value,datetime.date)):
+                    casted_value=str(value.isoformat())
+
+                if(isinstance(value,bool)):
+                    if(value):
+                        casted_value=1
                     else:
-                        casted_value=value.decode('UTF-8') # ascii
-                except:
-                    #char_set=chardet.detect(value)
-                    #print ("char",char_set)
-                    casted_value=value.decode('ISO-8859-1') 
-
-            if(isinstance(value,datetime.date)):
-                casted_value=str(value.isoformat())
-
-            if(isinstance(value,bool)):
-                if(value):
-                    casted_value=1
-                else:
-                    casted_value=0
-            
-            if(isinstance(casted_value,str)):
-                if(casted_value.count("'")>1):
-                    #print("LOCATED !!!!")
-                    if( "".join(casted_value.split())=="b''"):
-                        #print("FIXED")
-                        casted_value=None
+                        casted_value=0
+                
+                if(isinstance(casted_value,str)):
+                    if(casted_value.count("'")>1):
+                        #print("LOCATED !!!!")
+                        if( "".join(casted_value.split())=="b''"):
+                            #print("FIXED")
+                            casted_value=None
 
 
-            # if(casted_value=="b' '"):
-            #     casted_value=""
-            # if(casted_value=="b'  '"):
-            #     casted_value=""
-            # if(casted_value=="b'    '"):500
-            #     casted_value=""
-            # if(casted_value=="b'          '"):
-            #     casted_value=""
+                # if(casted_value=="b' '"):
+                #     casted_value=""
+                # if(casted_value=="b'  '"):
+                #     casted_value=""
+                # if(casted_value=="b'    '"):500
+                #     casted_value=""
+                # if(casted_value=="b'          '"):
+                #     casted_value=""
 
-            if(isinstance(value,float)):
-                casted_value=value*1
-       
+                if(isinstance(value,float)):
+                    casted_value=value*1
+        
 
-            #print("cast:",casted_value)
+                #print("cast:",casted_value)
 
-            #if(isinstance(value,str)):
-            #    casted_value=value.removeprefix("b'  '")
+                #if(isinstance(value,str)):
+                #    casted_value=value.removeprefix("b'  '")
 
-            row_values.append(casted_value)
-        row_values=tuple(row_values)
-        list_values.append(row_values)
-        return list_values
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                row_values.append(casted_value)
+            row_values=tuple(row_values)
+            row_list.append(row_values)
+        return row_list
 
 
     def load_data(self,tablename,file,block_size,commit_size):
@@ -318,12 +307,17 @@ class mssql():
         cursor=self._connection.cursor()
         
         num_rows=len(list_values)
+        print(num_rows)
+        print(commit_size)
+
         start=0
         end=0
+        is_last=0
         for i in range(0,num_rows,commit_size):
             end=end+commit_size
             if end>num_rows:
-                end=num_rows
+                is_last=1
+                end=num_rows-1
             #print ("De:",start, " to ", end)
             insert_block=list_values[start:end]
             try:
@@ -332,9 +326,14 @@ class mssql():
             except:
                 print ("Err: Block insert fail")
                 print("Index:",start," to: ", end)
-                print(print (insert_block))
+                print(insert_block)
+                
+                raise SystemExit(0)
                 break
             print("Insert rows:",start," to: ", end)
+            if(is_last):
+                print ("num_rows:",num_rows)
+            
             start=end #+1
             # self._connection.commit()
             #print (insert_block)
